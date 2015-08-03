@@ -24,6 +24,9 @@ namespace Silver
 				if (m_Cursor == null)
 					m_Cursor = gameObject.AddComponent<UI.CanvasCursor>();
 
+				if (m_Cursor != null)
+					m_Cursor.enabled = enabled;
+
 				m_Rect = GetComponent<RectTransform>();
 			}
 

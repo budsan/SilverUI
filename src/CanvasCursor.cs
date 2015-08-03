@@ -9,36 +9,10 @@ namespace Silver
 {
 	namespace UI
 	{
-		[AddComponentMenu("Event/Canvas Cursor")]
+		[RequireComponent(typeof(Canvas))]
 		public class CanvasCursor : BaseRaycaster
 		{
-			/// <summary>
-			/// Const to use for clarity when no event mask is set
-			/// </summary>
-			protected const int kNoEventMaskSet = -1;
-
-			/// <summary>
-			/// Layer mask used to filter events. Always combined with the camera's culling mask if a camera is used.
-			/// </summary>
-			[SerializeField]
-			protected LayerMask m_EventMask = kNoEventMaskSet;
-
-			/// <summary>
-			/// Event mask used to determine which objects will receive events.
-			/// </summary>
-			public int finalEventMask
-			{
-				get { return (eventCamera != null) ? eventCamera.cullingMask & m_EventMask : kNoEventMaskSet; }
-			}
-
-			/// <summary>
-			/// Layer mask used to filter events. Always combined with the camera's culling mask if a camera is used.
-			/// </summary>
-			public LayerMask eventMask
-			{
-				get { return m_EventMask; }
-				set { m_EventMask = value; }
-			}
+			public bool showSystemCursor = false;
 
 			private Canvas m_Canvas = null;
 			private Canvas canvas
@@ -53,7 +27,9 @@ namespace Silver
 				}
 			}
 
-			private GameObject cursor = null;
+			private GameObject CanvasObject = null;
+			private GameObject CursorImage = null;
+			private bool m_focus = true;
 
 			private static Sprite _spriteCursor = null;
 			static public Sprite GetCursorSprite()
@@ -66,90 +42,86 @@ namespace Silver
 
 			protected override void OnEnable()
 			{
-				base.OnEnable();
+				base.OnEnable();				
 
-				if (canvas == null)
-					return;
-
-				if (cursor == null)
+				// In Unity, the canvas mesh is rebuilt every time you change anything in your canvas. It's very likely that our main canvas
+				// to be pretty complex, so we want to avoid rebuild main canvas every time that the cursor is moving.
+				// That's why we create a secondary canvas.
+				CanvasObject = Helper.FindOrCreateUI("CursorCanvas", canvas.gameObject, (string name, GameObject parent) =>
 				{
-					cursor = new GameObject("Cursor");
-					cursor.layer = LayerMask.NameToLayer("UI");
+					GameObject goCanvas = Helper.CreateGUIGameObject("CanvasCursor", parent);
+					RectTransform rect = Helper.SetRectTransform(goCanvas, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 20, 20, 0, 0);
+					Canvas cursorCanvas = goCanvas.AddOrGetComponent<Canvas>();
+					cursorCanvas.pixelPerfect = true;
 
-					RectTransform rect = cursor.AddOrGetComponent<RectTransform>();
-					rect.anchorMin = new Vector2(0.0f, 1.0f);
-					rect.anchorMax = new Vector2(0.0f, 1.0f);
-					rect.pivot = new Vector2(0.3f, 0.9f);
-					rect.anchoredPosition = new Vector2(20.0f, 20.0f);
-					rect.sizeDelta = new Vector2(20.0f, 20.0f);
+					return goCanvas;
+				});
 
-					Image image = cursor.AddOrGetComponent<Image>();
+				CursorImage = Helper.FindOrCreateUI("Cursor", CanvasObject, (string name, GameObject parent) =>
+				{
+					GameObject cursorImage = Helper.CreateGUIGameObject("Cursor", parent);
+					RectTransform rect = Helper.SetRectTransform(cursorImage, 0.0f, 1.0f, 0.0f, 1.0f, 0.3f, 0.9f, 20.0f, 20.0f, 20.0f, 20.0f);
+
+					Image image = cursorImage.AddOrGetComponent<Image>();
 					image.sprite = GetCursorSprite();
 
-					CanvasGroup group = cursor.AddOrGetComponent<CanvasGroup>();
+					CanvasGroup group = cursorImage.AddOrGetComponent<CanvasGroup>();
 					group.blocksRaycasts = false;
 					group.interactable = false;
 
-					cursor.transform.SetParent(transform, false);
-					cursor.SetActive(false);
-				}
+					return cursorImage;
+				});
 
-				if (Input.mousePresent)
-				{
-					cursor.SetActive(true);
-#if UNITY_4_5 || UNITY_4_6
-					Screen.showCursor = false;
-	#else
-					Cursor.visible = false;
-#endif
-				}
+				ChangedVisibility();
 			}
 
 			protected override void OnDisable()
 			{
 				base.OnDisable();
-
-				cursor.SetActive(false);
-#if UNITY_4_5 || UNITY_4_6
-				Screen.showCursor = true;
-#else
-				Cursor.visible = true;
-#endif
+				ChangedVisibility();
 			}
 
 			void OnApplicationFocus(bool focus)
 			{
-				if (cursor == null)
+				m_focus = focus;
+				ChangedVisibility();
+			}
+
+			void ChangedVisibility()
+			{
+				if (CanvasObject == null)
 					return;
 
-				if (enabled && focus && Input.mousePresent)
-				{
-                    cursor.SetActive(true);
+				bool enableCursor = enabled && m_focus && Input.mousePresent;
+				CanvasObject.SetActive(enableCursor);
+
 #if UNITY_4_5 || UNITY_4_6
-                    Screen.showCursor = false;
+					Screen.showCursor = showSystemCursor || !enableCursor;
 #else
-                    Cursor.visible = false;
+				Cursor.visible = showSystemCursor || !enableCursor;
 #endif
-                }
-				else
-				{
-                    cursor.SetActive(false);
-#if UNITY_4_5 || UNITY_4_6
-                    Screen.showCursor = true;
-#else
-                    Cursor.visible = true;
-#endif
-                }
 			}
 
 			public override void Raycast(PointerEventData eventData, List<RaycastResult> resultAppendList)
 			{
-				RectTransform canvasRect = GetComponent<RectTransform>();
-				RectTransform cursorRect = cursor.AddOrGetComponent<RectTransform>();
-				Vector2 position = eventData.position;
-				position.x = position.x - 0.5f * (Screen.width - canvasRect.sizeDelta.x);
-				position.y = position.y - Screen.height;
-				cursorRect.anchoredPosition = position;
+				if (eventCamera != null && canvas != null && CanvasObject != null && CursorImage != null)
+				{
+					Camera camera = eventCamera;
+					Plane plane = new Plane(canvas.transform.forward, canvas.transform.position);
+					Ray ray = camera.ScreenPointToRay(eventData.position);
+					float rayDistance = camera.farClipPlane;
+					if (!plane.Raycast(ray, out rayDistance))
+						return;
+
+					Canvas cursorCanvas = CanvasObject.GetComponent<Canvas>();
+					RectTransform cursorCanvasRect = cursorCanvas.GetComponent<RectTransform>();
+					RectTransform canvasRect = canvas.GetComponent<RectTransform>();
+
+					RectTransform cursorRect = CursorImage.AddOrGetComponent<RectTransform>();
+					cursorRect.position = ray.GetPoint(rayDistance);
+
+					ChangedVisibility();
+				}
 
 				return;
 			}
