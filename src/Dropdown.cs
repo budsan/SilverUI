@@ -1,7 +1,5 @@
 ﻿using UnityEngine;
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine.UI;
 
 namespace Silver
@@ -28,6 +26,21 @@ namespace Silver
 				{
 					_multiselection = value;
 					RefreshItems();
+				}
+			}
+
+			[SerializeField]
+			private bool _menulist = false;
+			public bool MenuList
+			{
+				get
+				{
+					return _menulist;
+				}
+				set
+				{
+					_menulist = value;
+					ValidateDropdown();
 				}
 			}
 
@@ -92,18 +105,18 @@ namespace Silver
 			}
 
 			private GameObject goDropButton;
-			private GameObject goDropdown;
+			private GameObject goViewport;
 			private GameObject goScrollbar;
-			private GameObject goScrollPanel;
+			private GameObject goViewportContent;
 			private GameObject goItems;
 
 			private Text DropdownText;
 
 			private const string NameButton = "Button";
 			private const string NameArrow = "Arrow";
-			private const string NameDropdown = "Dropdown";
+			private const string NameViewport = "Viewport";
 			private const string NameScrollBar = "Scrollbar";
-			private const string NameScrollPanel = "ScrollPanel";
+			private const string NameViewportContent = "Content";
 			private const string NameSlidingArea = "SlidingArea";
 			private const string NameItems = "Items";
 			private const string NameItemsCheckmark = "Checkmark";
@@ -118,24 +131,48 @@ namespace Silver
 				Validate();
 			}
 
+			private void ResizeMenuList()
+			{
+				if (goViewport == null)
+					Validate();
+
+				RectTransform viewportRect = Helper.SetRectTransform(goViewport, 0, 0, 1, 1, 0.5f, 0.5f, 0, 0, 0, 0);
+				float height = viewportRect.rect.height;
+
+				float displayF = (height - 8.0f) / Helper.FontSizeWithMargins();
+				int display = Mathf.RoundToInt(displayF);
+				display = display > 0 ? display : 1;
+
+				if (display < Items.Length)
+				{
+					goScrollbar.SetActive(true);
+					Helper.SetRectTransform(goViewportContent, 0, 0, 1, 1, 0, 0.5f, -24.0f, -4.0f, 2.0f, 0.0f);
+				}
+				else
+				{
+					goScrollbar.SetActive(false);
+					Helper.SetRectTransform(goViewportContent, 0, 0, 1, 1, 0, 0.5f, -2.0f, -4.0f, 2.0f, 0.0f);
+				}
+			}
+
 			private void ResizeDropdown()
 			{
 				int display = ItemsToDisplay < Items.Length ? ItemsToDisplay : Items.Length;
 				display = display > 0 ? display : 1;
 
-				if (goDropdown == null)
+				if (goViewport == null)
 					Validate();
 
-				Helper.SetRectTransform(goDropdown, 0, 0, 1, 0, 0.5f, 1, 0, (display * Helper.FontSizeWithMargins()) + 8.0f, 0, 0);
+				Helper.SetRectTransform(goViewport, 0, 0, 1, 0, 0.5f, 1, 0, (display * Helper.FontSizeWithMargins()) + 8.0f, 0, 0);
 				if (display < Items.Length)
 				{
 					goScrollbar.SetActive(true);
-					Helper.SetRectTransform(goScrollPanel, 0, 0, 1, 1, 0, 0.5f, -24.0f, -4.0f, 2.0f, 0.0f);
+					Helper.SetRectTransform(goViewportContent, 0, 0, 1, 1, 0, 0.5f, -24.0f, -4.0f, 2.0f, 0.0f);
 				}
 				else
 				{
 					goScrollbar.SetActive(false);
-					Helper.SetRectTransform(goScrollPanel, 0, 0, 1, 1, 0, 0.5f, -2.0f, -4.0f, 2.0f, 0.0f);
+					Helper.SetRectTransform(goViewportContent, 0, 0, 1, 1, 0, 0.5f, -2.0f, -4.0f, 2.0f, 0.0f);
 				}
 			}
 
@@ -241,7 +278,7 @@ namespace Silver
 						DropdownText.text = MultiText;
 				}
 
-				go.name = "Item " + item._caption;
+				go.name = "Item " + id.ToString() + ": " + item._caption;
 				button.interactable = !item._isDisabled;
 				label.text = item._caption;
 				checkmark.gameObject.SetActive(item._selected);
@@ -285,31 +322,65 @@ namespace Silver
 			private void SetDropdown(bool enable, GameObject pointerPress)
 			{
 				if (goDropButton != pointerPress &&
-					goDropdown != null)
+					goViewport != null)
 				{
-					DropdownChangeTo(enable);
+					if (_menulist)
+						MenuListResized();
+					else
+						DropdownChangeTo(enable);
 				}
 					
 			}
 
+			private void ValidateDropdown()
+			{
+				if (goViewport != null)
+				{
+					bool enable = goViewport.activeSelf;
+					if (_menulist)
+						MenuListResized();
+					else
+						DropdownChangeTo(enable);
+				}
+			}
+
 			private void ToggleDropdown()
 			{
-				if (goDropdown != null)
+				if (goViewport != null)
 				{
-					bool enable = !goDropdown.activeSelf;
-					DropdownChangeTo(enable);
+					bool enable = !goViewport.activeSelf;
+					if (_menulist)
+						MenuListResized();
+					else
+						DropdownChangeTo(enable);
 				}
+			}
+
+			private void MenuListResized()
+			{
+				if (goDropButton != null && goDropButton.activeSelf)
+					goDropButton.SetActive(false);
+
+				if (!goViewport.activeSelf)
+					goViewport.SetActive(true);
+
+				goViewport.transform.SetParent(gameObject.transform);
+
+				ResizeMenuList();
 			}
 
 			private void DropdownChangeTo(bool enable)
 			{
-				goDropdown.SetActive(enable);
+				if (goDropButton != null && !goDropButton.activeSelf)
+					goDropButton.SetActive(true);
+
+				goViewport.SetActive(enable);
 				
 				if (enable && OverlayParent != null)
-					goDropdown.transform.SetParent(OverlayParent.transform);
+					goViewport.transform.SetParent(OverlayParent.transform);
 				else
 				{
-					goDropdown.transform.SetParent(gameObject.transform);
+					goViewport.transform.SetParent(gameObject.transform);
 					ResizeDropdown();
 				}
 			}
@@ -378,7 +449,7 @@ namespace Silver
 					return dropArrow;
 				});
 
-				goDropdown = Helper.FindOrCreateUI(NameDropdown, gameObject, (string name, GameObject parent) =>
+				goViewport = Helper.FindOrCreateUI(NameViewport, gameObject, (string name, GameObject parent) =>
 				{
 					GameObject dropdown = Helper.CreateGUIGameObject(name, parent);
 					dropdown.SetActive(false);
@@ -395,11 +466,11 @@ namespace Silver
 				clickEvent.RemoveListener(ToggleDropdown);
 				clickEvent.AddListener(ToggleDropdown);
 
-				ClickFencer fencerDropDown = goDropdown.GetComponent<ClickFencer>();
+				ClickFencer fencerDropDown = goViewport.GetComponent<ClickFencer>();
 				fencerDropDown.OnClick -= SetDropdown;
 				fencerDropDown.OnClick += SetDropdown;
 
-				goScrollbar = Helper.FindOrCreateUI(NameScrollBar, goDropdown, (string name, GameObject parent) =>
+				goScrollbar = Helper.FindOrCreateUI(NameScrollBar, goViewport, (string name, GameObject parent) =>
 				{
 					GameObject vertscrollbar = Helper.CreateGUIGameObject(name, parent);
 					Helper.SetRectTransform(vertscrollbar, 1, 0, 1, 1, 1, 1, 20.0f, 0.0f, 0.0f, 0.0f);
@@ -409,7 +480,7 @@ namespace Silver
 					return vertscrollbar;
 				});
 
-				goScrollPanel = Helper.FindOrCreateUI(NameScrollPanel, goDropdown, (string name, GameObject parent) =>
+				goViewportContent = Helper.FindOrCreateUI(NameViewportContent, goViewport, (string name, GameObject parent) =>
 				{
 					GameObject scrollPanel = Helper.CreateGUIGameObject(name, parent);
 					Helper.SetRectTransform(scrollPanel, 0, 0, 1, 1, 0, 0.5f, -24.0f, -4.0f, 2.0f, 0.0f);
@@ -422,7 +493,7 @@ namespace Silver
 
 				ResizeDropdown();
 
-				GameObject goSlidingArea = Helper.FindOrCreateUI(NameSlidingArea, goScrollPanel, (string name, GameObject parent) =>
+				GameObject goSlidingArea = Helper.FindOrCreateUI(NameSlidingArea, goViewportContent, (string name, GameObject parent) =>
 				{
 					GameObject slidingArea = Helper.CreateGUIGameObject(name, parent);
 					Helper.SetRectTransform(slidingArea, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0);
@@ -444,6 +515,7 @@ namespace Silver
 				});
 
 				RefreshItems();
+				ValidateDropdown();
 			}
 		}
 	}
